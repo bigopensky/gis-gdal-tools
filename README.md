@@ -1,3 +1,3 @@
-# gis-tools - GDAL Tools and Tricks
+# gis-tools - GIS Tools
 
 Geoinformation related stuff.
