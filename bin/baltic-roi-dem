@@ -1,0 +1,431 @@
+#!/usr/bin/perl
+# ----------------------------------------------------------------
+# Cut region from the IMKONOS
+# ----------------------------------------------------------------
+use strict;
+use warnings;
+use 5.020;
+no warnings 'experimental::smartmatch';
+
+use Cwd qw(abs_path getcwd);
+use Scalar::Util::Numeric qw(isnum);
+use File::Which;
+use Getopt::Long qw(GetOptions :config no_ignore_case);
+use Geo::Proj4;
+use Pod::Usage;
+use Config::General;
+use Data::Dumper;
+use Time::HiRes qw(gettimeofday);
+
+# ----------------------------------------------------------------
+# Settings settings
+# ----------------------------------------------------------------
+
+# The configuration path template
+my $CONF_PATH = 'etc/ifgdv';
+
+# The configuration file name
+my $CONF_FILE = 'baltic-dem.conf';
+
+# Help advise for usage
+my $USE0 = "Please use $0 -h or --help for validt commandline parameter!\n";
+my $USE1 = "Please use a valid IfGDV environment!\n";
+
+# ----------------------------------------------------------------
+# Try to get help or get the initialization for the IfGDV
+# enviroment and the destination file
+# ----------------------------------------------------------------
+my $WORK_PATH = shift;
+
+# Test empty cli
+die "Missing work path for the ifgdv environment!\n".$USE0
+    if ! $WORK_PATH;
+
+# Test for help page
+&help if $WORK_PATH ~~ ['-h','--help'];
+
+# Test for man page
+&man if $WORK_PATH ~~ ['-m', '--man'];
+
+# Test for invalid option in place
+die "Unkown option '$WORK_PATH' for the first CLI parameter!\n".$USE0
+    if $WORK_PATH =~/^-/;
+
+# OK Workpaththe IfGDV environment
+# is assumed to be absolutly here
+$WORK_PATH = abs_path($WORK_PATH);
+
+# ----------------------------------------------------------------
+# Read the name for the destination file
+# ----------------------------------------------------------------
+my $DST_FILE = shift;
+die "Missing filename for the resulting image!\n".$USE0
+    if ! $DST_FILE;
+
+$DST_FILE = abs_path($DST_FILE);
+# ----------------------------------------------------------------
+# Read the workpath for the ifgdv environment
+# ----------------------------------------------------------------
+print "\n# TOOL $0 OPEN CONFIGURATION\n";
+
+$WORK_PATH = abs_path($WORK_PATH);
+my $ETC_PATH = $WORK_PATH.'/'.$CONF_PATH;
+die "Unknown configuration path:\n ETC_PATH = $ETC_PATH\n\n".
+    "for the given work path:\n WORK_PATH = $WORK_PATH!\n\n".$USE1
+    if ! -d $ETC_PATH;
+
+$CONF_FILE=$ETC_PATH.'/'.$CONF_FILE;
+print "# READ $CONF_FILE\n";
+
+# Get the timemark
+my $STAMP = sprintf('%d.%d',gettimeofday);
+
+# Initialize Variables for the config parser
+my $CINIT = {
+    TIMESTAMP    => $STAMP,
+    APPLICATION  => $0,
+    CURRENT_PATH => getcwd,
+    WORK_PATH    => $WORK_PATH,
+    ETC_PATH     => $ETC_PATH,
+};
+
+# Initialize Variables for the config parser
+my $CPARSE = Config::General->new( -ConfigFile => $CONF_FILE,
+                                   -UseApacheInclude => 1,
+                                   -IncludeRelative  => 1,
+                                   -InterPolateVars  => 1,
+                                   -InterPolateEnv   => 1,
+                                   -AutoTrue         => 1,
+                                   -StrictVars       => 1,
+                                   -DefaultConfig    => $CINIT);
+
+# Check the validity of the configuration
+die "Unkown configuration file:\n CONF_FILE=$CONF_FILE\n ".
+    "for the given work path:\n WORK_PATH=$WORK_PATH !\n".$USE1
+     if ! $CPARSE;
+
+# Get the config data of the file
+my $CONFIG = $CPARSE->{config};
+
+# print Dumper($CONFIG);
+
+# ----------------------------------------------------------------
+# Set default parameter from config file
+# ----------------------------------------------------------------
+
+print "# ASSIGN CONFIGUARTION\n";
+
+# IMKONOS Digital elevation model version 1 created 2008
+# by Alexander Weidauer and Uwe Hagenlocher
+my $SRC_FILE = &readConfig('COMMON', 'DEM_FILE', 'S');
+my $SRC_EPSG = &readConfig('COMMON', 'DEM_EPSG', 'I');
+
+# Temporay file
+my $TEMP_OVER   = &readConfig('COMMON', 'TEMP_OVER', 'B');
+my $TEMP_FILE   = &readConfig('COMMON', 'TEMP_FILE', 'S');
+
+# GDAL Tools wen need for the task
+my $GDAL_TRNS   = &readConfig('GDAL', 'TOOL_TRANSLATE', 'EXTERN');
+my $GDAL_WARP   = &readConfig('GDAL', 'TOOL_WARP'     , 'EXTERN');
+my $GDAL_PACK   = &readConfig('GDAL', 'COMPRESSION'   , 'S');
+my $GDAL_PRED   = &readConfig('GDAL', 'PREDICTION'    , 'I');
+$GDAL_PACK = "-co COMPRESS=$GDAL_PACK";
+$GDAL_PRED = "-co PREDICTOR=$GDAL_PRED";
+
+# Boundary of the IMKONOS file in degrees
+my $WE_MIN = &readConfig('COMMON', 'WE_MIN', 'F');
+my $WE_MAX = &readConfig('COMMON', 'WE_MAX', 'F');
+my $NS_MIN = &readConfig('COMMON', 'NS_MIN', 'F');
+my $NS_MAX = &readConfig('COMMON', 'NS_MAX', 'F');
+
+my $CELL_MIN = &readConfig('COMMON', 'CELL_MIN', 'F');
+my $CELL_MAX = &readConfig('COMMON', 'CELL_MIN', 'F');
+
+my $DST_EPSG = &readConfig('COMMON', 'DST_EPSG', 'F');
+my $DST_OVER = &readConfig('COMMON', 'DST_OVER', 'B');
+
+# Default cell size
+my $CELL = &readConfig('COMMON', 'CELL_SIZE', 'B');
+
+# ----------------------------------------------------------------
+# Window in decimal degrees
+# ----------------------------------------------------------------
+# Western bound
+my $WEST  = &readConfig('COMMON', 'WE_MIN', 'F');
+# Southern bound
+my $SOUTH = &readConfig('COMMON', 'NS_MIN', 'F');;
+# Eastern bound
+my $EAST  = &readConfig('COMMON', 'WE_MAX', 'F');
+# Norhtern bound
+my $NORTH = &readConfig('COMMON', 'NS_MAX', 'F');
+
+# ----------------------------------------------------------------
+# Read CLI options
+# ----------------------------------------------------------------
+
+print "# PARSE COMMANDLINE\n";
+
+GetOptions(
+    "west|W=f"      => \&checkWest,
+    "east|E=f"      => \&checkEast,
+    "north|N=f"     => \&checkNorth,
+    "south|S=f"     => \&checkSouth,
+    "overwrite|o"   => \$DST_OVER,
+    "cell-size|s=f" => \&checkCell,
+    "epsg|e=i"      => \&checkEpsg,
+) or die("\nInvalid command line argument!\n");
+
+# ----------------------------------------------------------------
+# Check and collect things and check parameter
+# ----------------------------------------------------------------
+
+print "# CHECK SETTINGS\n";
+
+# Correct window
+($EAST, $WEST) = ($WEST, $EAST) if ( $EAST < $WEST );
+($NORTH, $SOUTH) = ($SOUTH, $NORTH) if ( $NORTH < $SOUTH );
+die "The east-west-extension is ZERO!\n"   if ($EAST == $WEST);
+die "The north-south-extension is ZERO!\n" if ($NORTH == $SOUTH);
+
+# Create the cell size template
+my $CELL_SIZE = "$CELL $CELL";
+
+# ---------------------------------------------------
+# Check source file, epsg settings
+# ---------------------------------------------------
+die "Source file:\n  $SRC_FILE\n\n is not available! ".
+    "Please check your work path!\n"
+    if ( ! -e $SRC_FILE);
+$SRC_FILE = abs_path($SRC_FILE);
+my $SRC_SRST = "-a_srs EPSG:$SRC_EPSG";
+
+
+# Check existance of source files and possibilities to overwrite something
+
+# ---------------------------------------------------
+# Check temporary file settings
+# ---------------------------------------------------
+# Check writability for the temp folder and possibillities to overwrite something
+if ( -e $TEMP_FILE ) {
+    unlink $TEMP_FILE if ( $TEMP_OVER );
+    die "Temporary file:\n  $TEMP_FILE\n\n exists! ".
+    "Please remove it!\n"  if ( ! $TEMP_OVER );
+}
+$TEMP_FILE = abs_path($TEMP_FILE);
+
+die "You try to overwrite your source file:\n  $SRC_FILE\n".
+    "with your temporary file: $TEMP_FILE !\n\n".
+    " Please choose another name!\n" if ( $SRC_FILE eq $TEMP_FILE );
+
+# ---------------------------------------------------
+# Check output file settings
+# ---------------------------------------------------
+die "You try to overwrite your source file:\n  $SRC_FILE\n".
+    "with destination: $DST_FILE !\n".
+    "Please choose another name!\n" if ( $SRC_FILE eq $DST_FILE );
+
+if ( -e $DST_FILE ) {
+    unlink $DST_FILE  if ( $DST_OVER );
+    die "Destination file:\n  $DST_FILE\nexists! ".
+        "Please remove it or use the overwrite option!\n" if ( ! $DST_OVER );
+}
+# EPSG template for the result file
+my $DST_SRST = "-t_srs EPSG:$DST_EPSG";
+
+# ---------------------------------------------------
+# Print settings
+# ---------------------------------------------------
+
+print "# SETTINGS ARE:\n";
+print "#   GDAL TRANS:   $GDAL_TRNS\n";
+print "#   GDAL WARP:    $GDAL_WARP\n";
+print "#   GDAL OPTION:  $GDAL_PACK $GDAL_PRED\n\n";
+
+print "#   SOURCE FILE:  $SRC_FILE \n";
+print "#   SOURCE EPSG:  $SRC_EPSG \n";
+print "#   TEMP FILE:    $TEMP_FILE \n\n";
+
+print "#   DEST. EPSG:      $DST_EPSG\n";
+print "#   DEST. FILE:      $DST_FILE\n";
+print "#   DEST. CELL SIZE: $CELL x $CELL [m]\n\n";
+
+print "#   WINDOW WEST:  $WEST\n";
+print "#   WINDOW EAST:  $EAST\n";
+print "#   WINDOW NORTH: $NORTH\n";
+print "#   WINDOW SOUTH: $SOUTH\n\n";
+
+print "# CALCULATE NEW DEM\n";
+
+# Call the GDAL tools
+my $res =`$GDAL_TRNS $SRC_SRST -projwin $WEST $NORTH $EAST $SOUTH $SRC_FILE $TEMP_FILE`;
+print $res;
+
+$res =`$GDAL_WARP $GDAL_PACK $GDAL_PRED $DST_SRST -tr $CELL_SIZE -r average $TEMP_FILE $DST_FILE\n`;
+print $res;
+
+print "remove $TEMP_FILE\n";
+unlink $TEMP_FILE if -e $TEMP_FILE;
+
+print "# EOF CALCULATION\n";
+
+# ============================================
+# Service routines
+# ============================================
+sub help () {
+    pod2usage( -exitstatus => 0, -verbose => 1 )
+}
+
+sub man () {
+    pod2usage( -exitstatus => 0, -verbose => 2 )
+}
+
+sub checkWest() {
+    my ($opt, $coord) = @_;
+    $WEST = &checkCoord($coord, $opt, "western", $WE_MIN, $WE_MAX);
+}
+
+sub checkEast() {
+    my ($opt, $coord) = @_;
+    $EAST = &checkCoord($coord, $opt, "eastern", $WE_MIN, $WE_MAX);
+}
+
+sub checkNorth() {
+    my ($opt, $coord) = @_;
+    $NORTH = &checkCoord($coord, $opt, "northern", $NS_MIN, $NS_MAX);
+}
+
+sub checkSouth() {
+    my ($opt, $coord) = @_;
+    $EAST = &checkCoord($coord, $opt, "southern", $NS_MIN, $NS_MAX);
+}
+
+sub checkCell() {
+    my ($opt, $cell) = @_;
+    my $min = 50;
+    my $max = 1000;
+    die "Invalid cell size $cell, option --$opt  !\n" if ( ! isnum($cell) );
+    die "Cell size $cell, option --$opt is out of range. ".
+        "The valid range is [$min..$max]!\n"
+        if ( $cell < $min or $cell > $max );
+    $CELL = $cell;
+}
+
+sub checkEpsg() {
+    my ($opt,$epsg) = @_;
+    my $proj = Geo::Proj4->new(init => "epsg:$epsg");
+    die "Invalid EPSG $epsg for option --$opt !\n" if ( ! $proj );
+    $DST_EPSG =  $epsg;
+}
+
+sub checkCoord() {
+    my ($coord, $opt, $type, $min, $max) = @_;
+    die "Empty $type boundary, option '$opt' !\n" if ! $coord;
+    die "Coordinate $coord of $type, option --$opt is not a number!\n"
+        if ( ! isnum($coord) );
+    die "Coordinate $coord of $type boundery, option --$opt is out of range. ".
+        "The valid range is [$min..$max] !\n"
+        if ( $coord<$min or $coord > $max );
+}
+
+sub readConfig() {
+    my ($section, $var, $type) = @_;
+    my $ref_sec =  $CONFIG->{$section};
+    die "Cannot find section <$section> in configuration:\n  $CONF_FILE !\n"
+        if ( ! $ref_sec);
+
+    my $ref_var = $ref_sec->{$var};
+    die "Cannot find variable '$var = ...'  ".
+        "in section <$section> of configuration:\n $CONF_FILE !\n"
+        if ( ! defined($ref_var));
+
+    # Resolve external tool
+    if ( $type eq 'EXTERN'  ) {
+        my @param = split(/\s+/, $ref_var);
+        if ( $param[0] eq 'SYS.WHICH' ) {
+            die "Cannot resolve external tool $var=$ref_var ".
+                "in section <$section> ".
+                "of configuration:\n  $CONF_FILE !\n"
+                if $#param < 1;
+            
+            my $res=which($param[1]);
+            die "Unkown external tool $var=$ref_var ".
+                "in section <$section> ".
+                "of configuration:\n  $CONF_FILE !\n"
+                if ! $res;
+
+            die "External tool:\n $res \n is not executable! ".
+                "for $var=$ref_var ".
+                "in section <$section> ".
+                "of configuration:\n  $CONF_FILE !\n"
+            if ( ! (-e $res and -x $res) ) ;
+
+            $ref_var = $res;
+        } else {
+            # Nothing to do here
+        }
+    }
+    return $ref_var;
+}
+
+__END__
+
+=head1 NAME
+
+baltic-roi-dem - Tool to exctract dem data for the baltic sea in a certain region
+
+=head1 SYNOPSIS
+
+baltic-roi-dem [-h|--help|-m|--man] work-path out-file -W west -E east -N north -S south [-s cell-size -e epsg -o]
+      work-path        work path to an valid IfGDV environment
+
+      out-file         the output file
+
+      -h --help        a short help context
+
+      -m --man         this man page
+
+      -e --epsg        normally 32633 for this region
+
+      -o --overwrite   overwrite the output
+
+      -s --cell-size   cell size [m] from 50 to 1000 [m]
+
+      -E --east        eastern boundary from 9.3 to 15.599 degree
+
+      -N --north       northern boundary from 52.4 to 56.6 degree
+
+      -S --south       southern boundary from 52.4 to 56.6 degree
+
+      -W --west        western boundary from 9.3 to 15.599 degree
+
+=head1 DESCRIPTION
+
+baltic-roi-dem is based on the IMKONOS V1 dataset build in 2008 by
+Alexander Weidauer and Uwe Hagenlocher for the DfG and the IfAÖ.  The
+datasource is OSS and hosted within the IfGDV FS, a unix like file
+system structure (sub system). The workpath addresses these structure
+where in the data directory the DEM is stored, the directory temp is
+used for calculations andthe dirctory etc addresses some configuration
+files.
+
+=head1 AUTHOR
+
+Alexander Weidauer, E<lt>awe@huckfinn.deE<gt>
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright (C) 2018 by Alexander Weidauer
+
+This program is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself, either Perl version 5.8.2 or,
+at your option, any later version of Perl 5 you may have available.
+
+=head1 BUGS
+
+None reported... yet.
+
+=cut
+
+# -----------------------------------------
+# EOF
+# -----------------------------------------

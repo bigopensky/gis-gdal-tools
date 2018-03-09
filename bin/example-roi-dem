@@ -1,0 +1,6 @@
+#!/usr/bin/perl
+# -----------------------------------
+# Example how the baltic-roi-dem
+# -----------------------------------
+use warnings;
+use strict;
