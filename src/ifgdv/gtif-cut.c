@@ -24,7 +24,7 @@
 #include <ogr_srs_api.h>
 #include <cpl_conv.h>
 #include <cpl_string.h>
-#include "alg.h"
+#include "ifgdv/alg.h"
 
 // -------------------------------------------------------------------
 int main(int argc, char **argv)
@@ -142,9 +142,9 @@ int main(int argc, char **argv)
   int num_bands  = GDALGetRasterCount (h_dsrc );
 
   // Get band infos 
-  GDALRasterBandH h_band[num_bands];
+  GDALRasterBandH  h_band[num_bands];
   GDALDataType    h_type[num_bands];
-  int             h_tsize[num_bands];
+  int              h_tsize[num_bands];
   for(int b=0 ; b<num_bands; b++) {
     h_band[b]  = GDALGetRasterBand( h_dsrc, b+1 );
     h_type[b]  = GDALGetRasterDataType(h_band[b]);

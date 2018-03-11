@@ -1,5 +1,5 @@
 // =====================================================================
-// Serviceroutines
+// Algorithms and mathmatical stuff
 // (c) - 2013 A. Weidauer  alex.weidauer@huckfinn.de
 // All rights reserved to A. Weidauer
 // =====================================================================
@@ -9,7 +9,7 @@
 #include <string.h>
 #include <math.h>
 #include <gsl/gsl_linalg.h>
-#include "alg.h"
+#include "ifgdv/alg.h"
 
 // ---------------------------------------------------------------
 /**
