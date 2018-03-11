@@ -1,23 +1,58 @@
-### Makefile --- 
+### Makefile ---------------------------------------------------
 ## Author:  alex.weidauer@huckfinn.de
 ## Version: $Id: Makefile,v 0.1 2013/10/02 14:41:26 huckfinn Exp $
 
-LPATH   = -L/usr/lib -L/usr/local/lib -L.
-IPATH   = -I/usr/include/ -I/usr/local/include
+# -------------------------------------------------------------
+# Libraries entires
+# -------------------------------------------------------------
+LPATH   = -L/usr/lib \
+	  -L/usr/local/lib \
+	  -L./lib
+
+# -------------------------------------------------------------
+# Include pathes
+# -------------------------------------------------------------
+IPATH   = -I/usr/include/ \
+	  -I/usr/local/include\
+	  -I./include
+
+# -------------------------------------------------------------
+# Compiler settings
+# -------------------------------------------------------------
 CFLAGS  = -std=c99 -pedantic
-LLINALG = -lgsl -lblas -lm
+LMATH   = -lgsl -lblas -lm
 LGDAL   = -lgdal
 
-all:	build/tif-cut 
+# -------------------------------------------------------------
+# Directories
+# -------------------------------------------------------------
+BUILD   = ./build
+DOC     = ./docs
+MAN     = ./man
+SRC     = ./src/ifgdv
+INC     = ./include/ifgdv
 
+# -------------------------------------------------------------
+# Management stuff
+# -------------------------------------------------------------
+all:	$(BUILD)/gtif-cut \
+	$(BUILD)/gtif-pos-read
+
+.PHONY: clean
 clean:
-	rm build/*
+	@echo "..CLEANING $(BUILD)"
+	rm $(BUILD)/*
 
-build/tif-cut: tif-cut.c alg.c
-	gcc  $(IPATH) $(LPATH) $(LGDAL) $(LLINALG) $(CFLAGS) -o build/tif-cut tif-cut.c alg.c
+# -------------------------------------------------------------
+# Tools
+# -------------------------------------------------------------
 
-alg.o: alg.c
-	gcc $(IPATH) $(LPATH) $(LLINALG) $(CFLAGS) -c alg.c 
+$(BUILD)/gtif-cut: $(BUILD)/alg.o $(SRC)/gtif-cut.c
+	   gcc $(IPATH) $(LPATH) $(LGDAL) $(LMATH) $(CFLAGS) -o $@ $^
 
+$(BUILD)/gtif-pos-read: $(BUILD)/alg.o $(SRC)/gtif-pos-read.c
+	   gcc $(IPATH) $(LPATH) $(LGDAL) $(LMATH) $(CFLAGS) -o $@ $^
 
+$(BUILD)/alg.o: $(SRC)/alg.c
+	gcc  $(IPATH) $(LPATH) $(LMATH) $(CFLAGS) -o $@ -c $^
 

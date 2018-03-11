@@ -9,7 +9,7 @@
 #include <string.h>
 #include <math.h>
 #include <gsl/gsl_linalg.h>
-#include "alg.h"
+#include "ifgdv/alg.h"
 
 // ---------------------------------------------------------------
 /**

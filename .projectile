@@ -1,0 +1,12 @@
++/etc/ifgdv
++/example
++/include/ifgdv
++/man
++/script
++/share/ifgdv
++/share/doc/ifgdv
++/src/ifgdv
++/test
+-/build
+-/lib
+-/temp
