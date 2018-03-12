@@ -4,44 +4,97 @@
 // All rights reserved to A. Weidauer
 // =====================================================================
 
+#include "ifgdv/error.h"
 #include "ifgdv/alg.h"
 #include "ifgdv/util.h"
 
+static bool gistk_raster_driver_loaded = false;
+static bool gistk_vector_driver_loaded = false;
+static int  gistk_debug_mode = 0;
+
+void gistk_init(bool use_raster, bool use_vector) {
+
+    if ( use_raster )
+    {
+        GDALAllRegister();
+        gistk_raster_driver_loaded = ( GDALGetDriverCount() > 0 );
+        if ( ! gistk_raster_driver_loaded )
+            gistk_error_fatal(GISTK_ERRC_GDAL_LOAD_DRVS,
+                              GISTK_ERRS_GDAL_LOAD_DRVS, 0);
+        if (gistk_debug_mode == 1)
+          printf("# %d RASTER DRIVER REGISTERD %d\n",
+                 GDALGetDriverCount(), gistk_raster_driver_loaded);
+    }
+
+    if ( use_vector )
+    {
+        OGRRegisterAll();
+        gistk_vector_driver_loaded = ( OGRGetDriverCount() > 0 );
+        if ( ! gistk_vector_driver_loaded )
+            gistk_error_fatal(GISTK_ERRC_OGR_LOAD_DRVS,
+                              GISTK_ERRS_OGR_LOAD_DRVS, 0);
+    }
+}
+
 // ----------------------------------------------------------------
-void igeo_open_raster_driver(const char * format,
+void gistk_check_raster_driver_base() {
+    // printf("# DRIVER REGISTERD? %d\n", gistk_raster_driver_loaded);
+    if ( ! gistk_raster_driver_loaded )
+            gistk_error_fatal(GISTK_ERRC_GDAL_INIT_DRVS,
+                              GISTK_ERRS_GDAL_INIT_DRVS, 0);
+}
+
+// ----------------------------------------------------------------
+void gistk_check_raster_driver_init(int err_source,
+                       const char * format,
+                       gistk_raster_driver_t * result)
+{
+    if ( result == NULL )
+        gistk_error_fatal(err_source,
+                          GISTK_ERRS_OPEN_DRV_INIT,
+                          format);
+}
+
+// ----------------------------------------------------------------
+void gistk_open_raster_driver(const char * format,
                              bool can_read,
                              bool can_write,
                              bool can_copy,
-                             igeo_raster_driver_t * result)
+                             gistk_raster_driver_t * result)
 {
 
-    if ( result == NULL )
-        error_exit(10,"Access to an uninitialized "
-        "igeo_raster_driver handle for format %s is forbidden!" ,format);
+    // Assert that we've registered all drivers
+    gistk_check_raster_driver_base();
 
-
-    // Assure that we've registered all drivers
-    if ( GDALGetDriverCount() < 1 ) GDALAllRegister();
+    // Check the memory validity of the result object
+    gistk_check_raster_driver_init(GISTK_ERRC_OPEN_DRV_INIT, format, result);
 
     result->driver = GDALGetDriverByName( format );
     if( result->driver == NULL )
-        error_exit(11,"Driver %s not avialable!" ,format);
+            gistk_error_fatal( GISTK_ERRC_OPEN_DRV_VALID,
+                               GISTK_ERRS_OPEN_DRV_VALID, format );
 
     // Get the metadata informations
     result-> info = GDALGetMetadata( result->driver, NULL );
+    if( result->info == NULL )
+            gistk_error_fatal( GISTK_ERRC_OPEN_DRV_INFO,
+                               GISTK_ERRS_OPEN_DRV_INFO, format );
 
     // ---------------------------------------------------------------
     // DCAP seems to be incomplete
     // CSLPrint(result->info, NULL);
     // Check we can create a new source
     // if( ! CSLFetchBoolean( result->info , GDAL_DCAP_RASTER, FALSE ) )
-    //    error_exit(12,"Format %s is not a raster format" ,format);
+    //        gistk_error_fatal( GISTK_ERRC_OPEN_DRV_ISRST,
+    //                           GISTK_ERRS_OPEN_DRV_ISRST, format );
+
 
     // Check we can read the format
     // if ( can_read )
     // {
     //    if( ! CSLFetchBoolean( result->info , GDAL_DCAP_OPEN, FALSE ) )
-    //        error_exit(13,"Format %s is not readable" ,format);
+    //        gistk_error_fatal( GISTK_ERRC_OPEN_DRV_ISREAD,
+    //                           GISTK_ERRS_OPEN_DRV_ISREAD, format );
     //    else
     //        result->can_read = true;
     // }
@@ -51,7 +104,8 @@ void igeo_open_raster_driver(const char * format,
     if ( can_copy )
     {
         if( ! CSLFetchBoolean( result->info , GDAL_DCAP_CREATECOPY, FALSE ) )
-            error_exit(14,"Format %s is not copyable" ,format);
+            gistk_error_fatal( GISTK_ERRC_OPEN_DRV_ISCOPY,
+                               GISTK_ERRS_OPEN_DRV_ISCOPY, format );
         else
             result->can_copy = true;
     }
@@ -60,55 +114,92 @@ void igeo_open_raster_driver(const char * format,
     if ( can_write )
     {
         if( ! CSLFetchBoolean( result->info , GDAL_DCAP_CREATE, FALSE ) )
-            error_exit(15,"Format %s is not writeable" ,format);
+            gistk_error_fatal( GISTK_ERRC_OPEN_DRV_ISWRITE,
+                               GISTK_ERRS_OPEN_DRV_ISWRITE, format );
         else
             result->can_write = true;
     }
 }
 
 // ----------------------------------------------------------------
-void igeo_open_raster(const char * filename, bool readonly, igeo_raster_t * result)
+void gistk_check_raster_init(int err_source,
+                       const char * filename,
+                       gistk_raster_t * result)
 {
     if ( result == NULL )
-        error_exit(20,"Access to an uninitialized "
-        "igeo_raster handle for file %s is forbidden!" ,filename);
+        gistk_error_fatal(err_source,
+                          GISTK_ERRS_OPEN_RST_INIT,
+                          filename);
+}
 
+
+// ----------------------------------------------------------------
+void gistk_open_raster(const char * filename, bool readonly, gistk_raster_t * result)
+{
+
+    // Assert that we've registered all drivers
+    gistk_check_raster_driver_base();
+
+    // Check the memory validity of the result object
+    gistk_check_raster_init(GISTK_ERRC_OPEN_RST_INIT, filename, result);
+
+    // Get the data source and check the results for
+    // the read and write case.
     if ( readonly )
+    {
        result->data = GDALOpen( filename , GA_ReadOnly );
+       if( result->data == NULL )
+           gistk_error_fatal(GISTK_ERRC_OPEN_RST_SRCR,
+                             GISTK_ERRS_OPEN_RST_SRC,
+                             filename, "readable");
+    }
     else
+    {
        result->data = GDALOpen( filename , GA_Update );
+       if( result->data == NULL )
+           gistk_error_fatal(GISTK_ERRC_OPEN_RST_SRCW,
+                             GISTK_ERRS_OPEN_RST_SRC,
+                             filename, "read- or writable");
+    }
 
-    if( result->data == NULL )
-       error_exit(21, "File %s is not accessible!\n", filename );
-
+    // Get the affine transformation parameter and check the results
     if( GDALGetGeoTransform( result->data, result->trfm ) != CE_None )
-       error_exit(23, "Transformation not avialable in %s \n", filename);
+        gistk_error_fatal(GISTK_ERRC_OPEN_RST_TRFM,
+                          GISTK_ERRS_OPEN_RST_TRFM,
+                          filename);
 
+    // Get the string representation of the spatial reference
+    // system and check the results
     result->proj_info = GDALGetProjectionRef( result->data);
-
     if ( result->proj_info == NULL)
-        error_exit(24, "Missing spatial reference system in %s!\n",filename);
+        gistk_error_fatal(GISTK_ERRC_OPEN_RST_SRS,
+                          GISTK_ERRS_OPEN_RST_SRS,
+                          filename);
+
 
     result->srs  = OSRNewSpatialReference(result->proj_info);
-
     if ( result->srs == NULL)
-        error_exit(25, "Spatial reference system %s in %s is invalid!\n",
-                   result->srs, filename);
+        gistk_error_fatal(GISTK_ERRC_OPEN_RST_SRS,
+                          GISTK_ERRS_OPEN_RST_SRS,
+                          filename, result->proj_info);
 
     result->num_cols  = GDALGetRasterXSize( result->data );
     if ( result->num_cols < 1)
-        error_exit(26, "Image width for raster %s is invalid!\n",
-                    filename);
+        gistk_error_fatal(GISTK_ERRC_OPEN_RST_WIDTH,
+                          GISTK_ERRS_OPEN_RST_WIDTH,
+                          filename);
 
     result->num_rows = GDALGetRasterYSize( result->data );
     if ( result->num_rows < 1)
-        error_exit(27, "Image height for raster %s is invalid!\n",
-                   filename);
+        gistk_error_fatal(GISTK_ERRC_OPEN_RST_HEIGHT,
+                          GISTK_ERRS_OPEN_RST_HEIGHT,
+                          filename);
 
     result->num_bands  = GDALGetRasterCount( result->data );
     if ( result->num_bands < 1)
-        error_exit(27, "Number of bands for raster %s is invalid!\n",
-                    filename);
+        gistk_error_fatal(GISTK_ERRC_OPEN_RST_NBAND,
+                          GISTK_ERRS_OPEN_RST_NBAND,
+                          filename);
 
     result->is_open = true;
 
@@ -116,11 +207,13 @@ void igeo_open_raster(const char * filename, bool readonly, igeo_raster_t * resu
 }
 
 // --------------------------------------------------------------
-void igeo_close_raster(igeo_raster_t * result)
+void gistk_close_raster(gistk_raster_t * result)
 {
+    // Check the memory validity of the result object
     if ( result == NULL )
-        error_exit(40,"Access to an uninitialized "
-        "igeo_raster handle is forbidden!");
+        gistk_error_fatal(GISTK_ERRC_CLOSE_RST,
+                          GISTK_ERRS_CLOSE_RST,
+                          0);
 
     if ( result->data != NULL) GDALClose( result -> data);
 
@@ -139,16 +232,14 @@ void igeo_close_raster(igeo_raster_t * result)
 }
 
 // -----------------------------------------------------------------------
-void igeo_cut_raster(const igeo_raster_driver_t tool,
-                const igeo_raster_t source, const char * filename,
+void gistk_cut_raster(const gistk_raster_driver_t tool,
+                const gistk_raster_t source, const char * filename,
                     int win_min_x, int win_min_y,
                     int win_max_x, int win_max_y,
-                    igeo_raster_t * result) {
+                    gistk_raster_t * result) {
 
-    // Check the outgoing memory
-    if ( result == NULL )
-        error_exit(30,"Access to an uninitialized "
-        "igeo_raster handle for file %s is forbidden!" ,filename);
+    // Check the memory validity of the result object
+    gistk_check_raster_init(GISTK_ERRC_CUT_RST_INIT, filename, result);
 
     // sort the window parameter
     sort_int( &win_min_x, &win_max_x);
@@ -159,8 +250,8 @@ void igeo_cut_raster(const igeo_raster_driver_t tool,
     if ( win_max_x < 0) win_max_x = 0;
     if ( win_min_y < 0) win_min_y = 0;
     if ( win_max_y < 0) win_max_y = 0;
-    if ( win_min_x > source.num_cols-1)  win_min_x = source.num_cols-1;
-    if ( win_max_x > source.num_cols-1)  win_max_x = source.num_cols-1;
+    if ( win_min_x > source.num_cols-1) win_min_x = source.num_cols-1;
+    if ( win_max_x > source.num_cols-1) win_max_x = source.num_cols-1;
     if ( win_min_y > source.num_rows-1) win_min_y = source.num_rows-1;
     if ( win_max_y > source.num_rows-1) win_max_y = source.num_rows-1;
 
@@ -170,10 +261,14 @@ void igeo_cut_raster(const igeo_raster_driver_t tool,
 
     // Prevent mal formed images
     if ( width < 1 )
-        error_exit(31,"Cut window width is 0 for file %s!" ,filename);
+        gistk_error_fatal(GISTK_ERRC_CUT_RST_WIDTH,
+                          GISTK_ERRS_CUT_RST_WIDTH ,
+                          filename);
 
     if ( height < 1 )
-        error_exit(31,"Cut window height is 0 for file %s!" ,filename);
+        gistk_error_fatal(GISTK_ERRC_CUT_RST_HEIGHT,
+                          GISTK_ERRS_CUT_RST_HEIGHT,
+                          filename);
 
     // Get the sizes for the io buffer
     GDALDataType in_types [source.num_bands];
@@ -181,9 +276,12 @@ void igeo_cut_raster(const igeo_raster_driver_t tool,
     for(int b=0 ; b < source.num_bands; b++) {
       GDALRasterBandH in_band = GDALGetRasterBand( source.data, b+1 );
       in_types[b] = GDALGetRasterDataType( in_band );
+
       int num_bits = GDALGetDataTypeSize( in_types[b] );
+      // @TODO Use GDALGetDataTypeSizeBytes( in_types[b] );
       int num_bytes = num_bits / 8;
-      if ( num_bits % 8 > 0) num_bytes += 1;
+      // @TODO Bit packed stuff?
+      // if ( num_bits % 8 > 0) num_bytes += 1;
       in_sizes[b] = num_bytes;
     }
 

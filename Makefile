@@ -47,16 +47,19 @@ clean:
 # Tools
 # -------------------------------------------------------------
 
-$(BUILD)/gtif-cut: $(BUILD)/alg.o $(BUILD)/util.o $(SRC)/gtif-cut.c
+$(BUILD)/gtif-cut: $(BUILD)/error.o $(BUILD)/alg.o $(BUILD)/util.o $(SRC)/gtif-cut.c
 	   gcc $(IPATH) $(LPATH) $(LGDAL) $(LMATH) $(CFLAGS) -o $@ $^
 
 $(BUILD)/gtif-pos-read: $(BUILD)/alg.o $(SRC)/gtif-pos-read.c
 	   gcc $(IPATH) $(LPATH) $(LGDAL) $(LMATH) $(CFLAGS) -o $@ $^
 
-$(BUILD)/alg.o: $(SRC)/alg.c
+$(BUILD)/alg.o:  $(SRC)/alg.c
 	gcc  $(IPATH) $(LPATH) $(LMATH) $(CFLAGS) -o $@ -c $^
 
-$(BUILD)/util.o: $(SRC)/util.c
+$(BUILD)/util.o:   $(SRC)/util.c
+	gcc  $(IPATH) $(LPATH) $(LMATH) $(CFLAGS) -o $@ -c $^
+
+$(BUILD)/error.o: $(SRC)/error.c
 	gcc  $(IPATH) $(LPATH) $(LMATH) $(CFLAGS) -o $@ -c $^
 
 test:

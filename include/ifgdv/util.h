@@ -4,9 +4,7 @@
 #ifndef INCLUDED_UTIL_H
 #define INCLUDED_UTIL_H 1
 
-// IGEO Standard raster format GeoTIFF
-#define IGEO_FMT_GTIFF "GTiff"
-
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,13 +16,16 @@
 #include <cpl_conv.h>
 #include <cpl_string.h>
 
+// GISTK Standard raster format GeoTIFF
+#define GISTK_FMT_GTIFF "GTiff"
+
 typedef struct {
   GDALDriverH driver;
   char** info;
   bool can_write;
   bool can_read;
   bool can_copy;
-}  igeo_raster_driver_t;
+}  gistk_raster_driver_t;
 
 typedef struct {
   GDALDatasetH data;
@@ -36,7 +37,20 @@ typedef struct {
   int num_bands;
   bool is_open;
   bool readonly;
-} igeo_raster_t;
+} gistk_raster_t;
+
+
+/**
+ * Initializes the gdal stuff
+ * @param use_raster - Load GDALdriver 
+ * @param use_vector - Load OGR driver
+ * @result sets the global variables gistk_raster_loaded and
+ *         gistk_raster_loaded to true or false
+ * @error - exits with fatal error one of the driver register is'nt present
+ */
+void gistk_init(bool use_raster, bool use_vector);
+
+void gistk_check_raster_driver_base();
 
 // ---------------------------------------
 /**
@@ -47,11 +61,25 @@ typedef struct {
  * @param can_copy  test to copy datasets with this driver
  * @result a pointer to a valid a raster driver container
  */
-void igeo_open_raster_driver(const char * format,
+void gistk_open_raster_driver(const char * format,
                        bool can_read,
                        bool can_write,
                        bool can_copy,
-                       igeo_raster_driver_t * result);
+                       gistk_raster_driver_t * result);
+
+// ---------------------------------------
+/**
+ * Check the memory validity of a resulting
+ * raster object
+ * @param - err_source error code number for the source
+ * @param - filename addressed in the runtime context
+ * @param - result memory object to be checked
+ * @error - exits with fatal if result is == NULL
+ */
+void gistk_check_raster_init(int err_source,
+                       const char * filename,
+                             gistk_raster_t * result);
+
 
 // ---------------------------------------
 /**
@@ -60,9 +88,9 @@ void igeo_open_raster_driver(const char * format,
  * @param readonly open the thie read only
  * @result a pointer to a valid a raster container
  */
-void igeo_open_raster(const char * filename,
+void gistk_open_raster(const char * filename,
                   bool is_readonly,
-                  igeo_raster_t * result);
+                  gistk_raster_t * result);
 
 // ---------------------------------------
 /**
@@ -70,7 +98,7 @@ void igeo_open_raster(const char * filename,
  * @param result is an pointer to an open raster file container.
  * @result the file is close and the structure is closed.
  */
-void igeo_close_raster(igeo_raster_t * result);
+void gistk_close_raster(gistk_raster_t * result);
 
 // ---------------------------------------
 /**
@@ -84,11 +112,11 @@ void igeo_close_raster(igeo_raster_t * result);
  * @param win_max_y - rupper x coordinate [pixel] of the cut window
  * @param result -  a pointer to a valid a raster container
  */
-void igeo_cut_raster(const igeo_raster_driver_t tool,
-                const igeo_raster_t source,
+void gistk_cut_raster(const gistk_raster_driver_t tool,
+                const gistk_raster_t source,
                 const char * filename,
                 int win_min_x, int win_min_y,
                 int win_max_x, int win_max_y,
-                igeo_raster_t * result);
+                gistk_raster_t * result);
 
 #endif /* INCLUDED_UTIL_H */

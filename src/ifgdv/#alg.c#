@@ -3,6 +3,7 @@
 // (c) - 2013 A. Weidauer  alex.weidauer@huckfinn.de
 // All rights reserved to A. Weidauer
 // =====================================================================
+
 #include "ifgdv/alg.h"
 
 // ---------------------------------------------------------------

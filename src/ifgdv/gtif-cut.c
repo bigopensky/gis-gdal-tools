@@ -16,18 +16,17 @@
 // You should have received a copy of the GNU General Public License
 // along with gtif-cut.c.  If not, see <http://www.gnu.org/licenses/>.
 // =====================================================================
+
+#include "ifgdv/error.h"
 #include "ifgdv/alg.h"
 #include "ifgdv/util.h"
 
 // -------------------------------------------------------------------
 int main(int argc, char **argv)
 {
-
-  char *ERROR_PRM = "Invalid numeric value %s: %s\n!";
-
   // Check the minimum of cmd params
   if (argc<7) {
-    error_exit(10,
+    gistk_error_fatal(1,
 	"Missing parameter at least 8\n"
         "Usage: %s IN OUT EXT WSZ HSZ ID1 X1 Y1 ID2 X2 Y2 ...!\n"
         "Example: %s  dem.v2.3d.tif zz tif 128 423 1 399000 6038000 2 380000 6100000\n",
@@ -47,15 +46,17 @@ int main(int argc, char **argv)
   char *ext   = argv[3];
 
   // Set default window size and try to read from cli
-  int wsize = 64;
-  int hsize = 64;
-  if (! sscanf(argv[4],"%d",&wsize) ) {
-    error_exit(1000+3,ERROR_PRM,"WSZ",argv[4]);
-  }
+  int wsize = 64;   int hsize = 64;
 
-  if (! sscanf(argv[5],"%d",&hsize) ) {
-    error_exit(1000+3,ERROR_PRM,"HSZ",argv[4]);
-  }
+  // Argument counter
+  int arg_cnt = 3;
+  if (! sscanf(argv[++arg_cnt],"%d",&wsize) )
+    gistk_error_fatal(arg_cnt+1, GISTK_ERRS_INVALID_NUMERIC,
+                      "WIN.WIDTH",argv[arg_cnt]);
+
+  if (! sscanf(argv[++arg_cnt],"%d",&hsize) )
+    gistk_error_fatal(arg_cnt+1, GISTK_ERRS_INVALID_NUMERIC,
+                      "WIN.HEIGHT",argv[arg_cnt]);
 
   // init vectors for id's and positions
   int_vector_t id;
@@ -66,38 +67,40 @@ int main(int argc, char **argv)
   dbl_vector_init(&pos_y, 10);
 
   // Read center positions of the window from cli
-  int a = 6; double dbl; int pk;
-  while( a < argc-2 ) {
+  double dbl; int pk;
+  while( arg_cnt < argc-2 ) {
 
     // parse id coordinate
-    if (! sscanf(argv[a],"%d",&pk) ) {
-      error_exit(1000+a,ERROR_PRM,"ID", argv[a]);
-    }
+    if (! sscanf(argv[++arg_cnt],"%d",&pk) )
+      gistk_error_fatal(arg_cnt+1, GISTK_ERRS_INVALID_NUMERIC,
+                        "ID",argv[arg_cnt]);
     int_vector_add(&id,pk);
 
     // parse x coordinate
-    if (! sscanf(argv[a+1],"%lf",&dbl) ) {
-      error_exit(1000+a+1,ERROR_PRM,"X", argv[a+1]);
-    }
+    if (! sscanf(argv[++arg_cnt],"%lf",&dbl) )
+      gistk_error_fatal(arg_cnt+1, GISTK_ERRS_INVALID_NUMERIC,
+                        "X",argv[arg_cnt]);
     dbl_vector_add(&pos_x,dbl);
 
     // parse y coordinate
-    if (! sscanf(argv[a+2],"%lf",&dbl) ) {
-      error_exit(1000+a+2,ERROR_PRM,"Y", argv[a+2]);
-    }
+    if (! sscanf(argv[++arg_cnt],"%lf",&dbl) )
+      gistk_error_fatal(arg_cnt+1, GISTK_ERRS_INVALID_NUMERIC,
+                        "Y",argv[arg_cnt]);
     dbl_vector_add(&pos_y,dbl);
 
-    a+=3;
   }
 
+  // Register the drivers
+  gistk_init(true,false);
+
   // Get the GTiff driver an assure raste, read and write capabilities
-  igeo_raster_driver_t gtiff;
-  igeo_open_raster_driver( IGEO_FMT_GTIFF, true, true, false, &gtiff );
+  gistk_raster_driver_t gtiff;
+  gistk_open_raster_driver( GISTK_FMT_GTIFF, true, true, false, &gtiff );
 
   // open geotiff and handle error
-  igeo_raster_t src_raster;
+  gistk_raster_t src_raster;
   printf("# IN FILE:       %s\n", ifile);
-  igeo_open_raster( ifile, true, &src_raster);
+  gistk_open_raster( ifile, true, &src_raster);
 
   printf("# OUT FILE:      %s\n", ofile);
   printf("# EXTENSION:     %s\n", ext);
@@ -132,20 +135,20 @@ int main(int argc, char **argv)
     int ioffs_col = icol-wsize/2;
     int ioffs_row = irow-hsize/2;
 
-    igeo_raster_t new_raster;
-    igeo_cut_raster(gtiff,
+    gistk_raster_t new_raster;
+    gistk_cut_raster(gtiff,
                     src_raster,
                     cfile,
                     ioffs_col, ioffs_col+wsize,
                     ioffs_row, ioffs_row+hsize,
                     &new_raster);
 
-    igeo_close_raster(&new_raster);
+    gistk_close_raster(&new_raster);
 
   } // EOF positions
 
   // Close source image
-  igeo_close_raster(&src_raster);
+  gistk_close_raster(&src_raster);
 
   return 0;
 }
