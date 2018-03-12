@@ -54,15 +54,6 @@ typedef struct {
     size_t mem_size;
 } int_vector_t;
 
-// =================================================================
-/**
- * central error exit point
- * @param code    exit code
- * @param message message template sprintf format
- * @param ...     parameter
- */
-void error_exit(int code, const char *message, ...);
-
 // ---------------------------------------------------------------
 /**
  * initialize a dynamic double vector
