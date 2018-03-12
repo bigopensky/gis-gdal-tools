@@ -47,7 +47,7 @@ clean:
 # Tools
 # -------------------------------------------------------------
 
-$(BUILD)/gtif-cut: $(BUILD)/alg.o $(SRC)/gtif-cut.c
+$(BUILD)/gtif-cut: $(BUILD)/alg.o $(BUILD)/util.o $(SRC)/gtif-cut.c
 	   gcc $(IPATH) $(LPATH) $(LGDAL) $(LMATH) $(CFLAGS) -o $@ $^
 
 $(BUILD)/gtif-pos-read: $(BUILD)/alg.o $(SRC)/gtif-pos-read.c
@@ -56,3 +56,8 @@ $(BUILD)/gtif-pos-read: $(BUILD)/alg.o $(SRC)/gtif-pos-read.c
 $(BUILD)/alg.o: $(SRC)/alg.c
 	gcc  $(IPATH) $(LPATH) $(LMATH) $(CFLAGS) -o $@ -c $^
 
+$(BUILD)/util.o: $(SRC)/util.c
+	gcc  $(IPATH) $(LPATH) $(LMATH) $(CFLAGS) -o $@ -c $^
+
+test:
+	(BUILD)/gtif-cut dem.v2.3d.tif test.2.tif 128 1 399261.910 6039631.7791

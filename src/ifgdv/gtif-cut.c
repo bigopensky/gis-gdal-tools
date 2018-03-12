@@ -1,30 +1,23 @@
 // =====================================================================
-// Cut von sub samples (small images) from a geotiff
+// Cut von subsamples (small images) from a geotiff
 // (c) - 2013 A. Weidauer  alex.weidauer@huckfinn.de
 // All rights reserved to A. Weidauer
 // =====================================================================
-// tif-cut.c is free software: you can redistribute it and/or modify
+// gtif-cut.c is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // any later version.
 //
-// tif-cut.c is distributed in the hope that it will be useful,
+// gtif-cut.c is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with tif-cut.c.  If not, see <http://www.gnu.org/licenses/>.
+// along with gtif-cut.c.  If not, see <http://www.gnu.org/licenses/>.
 // =====================================================================
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <regex.h>
-#include <gdal.h>
-#include <ogr_srs_api.h>
-#include <cpl_conv.h>
-#include <cpl_string.h>
 #include "ifgdv/alg.h"
+#include "ifgdv/util.h"
 
 // -------------------------------------------------------------------
 int main(int argc, char **argv)
@@ -32,28 +25,13 @@ int main(int argc, char **argv)
 
   char *ERROR_PRM = "Invalid numeric value %s: %s\n!";
 
-  // register GDAL drivers
-  GDALAllRegister();
-
-  // set format GTiff with error handling 
-  const char *format = "GTiff";
-  GDALDriverH h_drv = GDALGetDriverByName( format );
-  if( h_drv == NULL ) {
-    error_exit(10,"Driver %s not avialable!" ,format);
-  }
-
-  // Test to write the format
-  char **test_meta;
-  test_meta = GDALGetMetadata( h_drv, NULL );
-  if( ! CSLFetchBoolean( test_meta, GDAL_DCAP_CREATE, FALSE ) ) {
-    error_exit(10,"Format %s is not writeable" ,format);
-  }
-
   // Check the minimum of cmd params
-  if (argc<6) {
+  if (argc<7) {
     error_exit(10,
-	"Missing parameter at least 6\nUsage %s IN OUT EXT SZ ID X Y ID X Y ID X Y....!\n",
-	argv[0]);
+	"Missing parameter at least 8\n"
+        "Usage: %s IN OUT EXT WSZ HSZ ID1 X1 Y1 ID2 X2 Y2 ...!\n"
+        "Example: %s  dem.v2.3d.tif zz tif 128 423 1 399000 6038000 2 380000 6100000\n",
+         argv[0], argv[0]);
   }
 
   // Read infile pattern from cli
@@ -69,13 +47,15 @@ int main(int argc, char **argv)
   char *ext   = argv[3];
 
   // Set default window size and try to read from cli
-  int size = 64;
-  if (! sscanf(argv[4],"%d",&size) ) {
-    error_exit(1000+3,ERROR_PRM,"SZ",argv[4]);
+  int wsize = 64;
+  int hsize = 64;
+  if (! sscanf(argv[4],"%d",&wsize) ) {
+    error_exit(1000+3,ERROR_PRM,"WSZ",argv[4]);
   }
 
-  // Init affine transfomation vector 
-  double trfm[] ={0,0,0,0,0,0};
+  if (! sscanf(argv[5],"%d",&hsize) ) {
+    error_exit(1000+3,ERROR_PRM,"HSZ",argv[4]);
+  }
 
   // init vectors for id's and positions
   int_vector_t id;
@@ -86,7 +66,7 @@ int main(int argc, char **argv)
   dbl_vector_init(&pos_y, 10);
 
   // Read center positions of the window from cli
-  int a = 5; double dbl; int pk;
+  int a = 6; double dbl; int pk;
   while( a < argc-2 ) {
 
     // parse id coordinate
@@ -110,120 +90,64 @@ int main(int argc, char **argv)
     a+=3;
   }
 
+  // Get the GTiff driver an assure raste, read and write capabilities
+  igeo_raster_driver_t gtiff;
+  igeo_open_raster_driver( IGEO_FMT_GTIFF, true, true, false, &gtiff );
+
   // open geotiff and handle error
-  printf("# IN FILE:  %s\n", ifile);
-  GDALDatasetH h_dsrc = GDALOpen( ifile, GA_ReadOnly);
-  if( h_dsrc == NULL ) {
-    error_exit(10, "File %s is not accessible!\n", ifile);
-  }
-  printf("# OUT FILE: %s\n", ofile);
-  printf("# EXTENTION: %s\n", ext);
+  igeo_raster_t src_raster;
+  printf("# IN FILE:       %s\n", ifile);
+  igeo_open_raster( ifile, true, &src_raster);
 
-  // Read transformation and handle error
-  if( GDALGetGeoTransform( h_dsrc, trfm ) == CE_None ) {
-    printf("# TRANSFORM: \n");
-    printf("#  X = %.6f + %.6f * COL + %.6f * ROW\n",
-	   trfm[0], trfm[1], trfm[2] );
-    printf("#  Y = %.6f + %.6f * COL + %.6f * ROW\n# EOF:\n",
-	   trfm[3], trfm[4], trfm[5] );
-  } else {
-    error_exit(10, "Transformation not avialable in TIFF!\n");
-  }
-  // Read the spatial reference system and/or handel error
-  const char* h_ssrs = GDALGetProjectionRef(h_dsrc);
-  if (h_ssrs == NULL) {
-    error_exit(10, "Missing spatial reference system in TIFF!\n");
-  }
-  OGRSpatialReferenceH h_dsrs = OSRNewSpatialReference(h_ssrs);
+  printf("# OUT FILE:      %s\n", ofile);
+  printf("# EXTENSION:     %s\n", ext);
+  printf("# NUM TUPLE:     %d\n", pos_x.length);
+  printf("# WINDOW WIDTH:  %d\n",wsize);
+  printf("# WINDOW HEIGHT: %d\n",hsize);
 
-  // Get image dimensions and numer of bands
-  int img_width  = GDALGetRasterXSize( h_dsrc );
-  int img_height = GDALGetRasterYSize( h_dsrc );
-  int num_bands  = GDALGetRasterCount (h_dsrc );
-
-  // Get band infos 
-  GDALRasterBandH  h_band[num_bands];
-  GDALDataType    h_type[num_bands];
-  int              h_tsize[num_bands];
-  for(int b=0 ; b<num_bands; b++) {
-    h_band[b]  = GDALGetRasterBand( h_dsrc, b+1 );
-    h_type[b]  = GDALGetRasterDataType(h_band[b]);
-    h_tsize[b] = GDALGetDataTypeSize(h_type[b]);
-  }
-
-  // Create sub images 
-  for (int c=0; c< pos_x.length; c++ ) {
+  // Create snippets
+  for (int c=0; c < pos_x.length; c++ ) {
 
     // Transform cut position (world) to image positions
     long icol = -1; long irow = -1;
-    trfm_geo_pix(trfm, pos_x.data[c], pos_y.data[c],
-		 &icol , &irow);
+    trfm_geo_pix(src_raster.trfm, pos_x.data[c], pos_y.data[c], &icol , &irow);
 
     // Create filename from patter id and extention
-    sprintf(cfile,"%s.%d%s",ofile, id.data[c],ext);
+    sprintf(cfile,"%s.%d.%s",ofile, id.data[c], ext);
 
     // Test if the window is inside the image and
-    // skip the stuff if outside 
-    if (icol-size/2<=0 ||
-	irow-size/2<=0 ||
-	icol+size/2>=img_width ||
-	irow+size/2>=img_height){
-      printf ("IGN %d %s\n",id.data[c],ofile);
+    // skip the stuff if outside
+    if (icol-wsize/2<=0 ||
+	irow-hsize/2<=0 ||
+	icol+wsize/2>=src_raster.num_cols ||
+	irow+hsize/2>=src_raster.num_rows)
+    {
+      printf ("IGN %d %s %d %d\n",id.data[c], cfile, icol, irow);
       continue;
     }
 
     // cut the sub image
-    printf ("ADD %d %s\n",id.data[c],ofile);
+    printf ("ADD %d %s %d %d\n",id.data[c], cfile, icol, irow);
 
-    int ioffs_col = icol-size/2;
-    int ioffs_row = irow-size/2;
+    int ioffs_col = icol-wsize/2;
+    int ioffs_row = irow-hsize/2;
 
-    // create the tiff
-    // char **options = NULL;
-    GDALDatasetH h_ddst = GDALCreate( h_drv,
-		 cfile, size, size, num_bands, h_type[0], NULL);
+    igeo_raster_t new_raster;
+    igeo_cut_raster(gtiff,
+                    src_raster,
+                    cfile,
+                    ioffs_col, ioffs_col+wsize,
+                    ioffs_row, ioffs_row+hsize,
+                    &new_raster);
 
-    // Set transformation  
-    double foffx = icol-size/2.0;
-    double foffy = irow-size/2.0; 
-    double goffx = 0;
-    double goffy = 0; 
-    trfm_pix_geo( trfm, (int) round(foffx), (int) round(foffy), &goffx, &goffy); 
-    double trfm_dst[6] = { goffx, trfm[1], trfm[2], goffy, trfm[4], trfm[5] };
-
-    // Copy spatial reference system 
-    char *dsrs_wkt = NULL; 
-    OSRExportToWkt( h_dsrs, &dsrs_wkt );
-    GDALSetGeoTransform( h_ddst, trfm_dst);
-    GDALSetProjection( h_ddst, dsrs_wkt);
-    CPLFree( dsrs_wkt );
-
-    // Iteration over all bands
-    for (int b=0; b < num_bands; b++) {
-
-      // alloc io buffer for the copy @todo static
-      void *io_buffer = CPLMalloc(h_tsize[0] * size * size);
-
-      // copy pixels
-      GDALRasterIO( h_band[b], GF_Read,
-		    ioffs_col, ioffs_row, size, size,
-		    io_buffer, size, size, h_type[b], 0, 0 );
-      // address pixel to band handle of and copy the io buffer
-      GDALRasterBandH h_band_out = GDALGetRasterBand(h_ddst, b+1);
-      GDALRasterIO( h_band_out, GF_Write, 0, 0, size, size,
-		    io_buffer, size, size, h_type[b], 0, 0 );
-      // free io buffer
-      CPLFree(io_buffer);
-    }
-    // write the tif and flush the stuff
-    GDALClose( h_ddst );
+    igeo_close_raster(&new_raster);
 
   } // EOF positions
 
   // Close source image
-  GDALClose( h_dsrc);
+  igeo_close_raster(&src_raster);
+
   return 0;
 }
 
 // --- EOF -----------------------------------------------------------
-

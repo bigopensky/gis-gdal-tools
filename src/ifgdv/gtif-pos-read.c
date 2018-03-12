@@ -16,15 +16,6 @@
 // You should have received a copy of the GNU General Public License
 // along with tif-cut.c.  If not, see <http://www.gnu.org/licenses/>.
 // =====================================================================
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <regex.h>
-#include <gdal.h>
-#include <ogr_srs_api.h>
-#include <cpl_conv.h>
-#include <cpl_string.h>
-#include "alg.h"
 
 int main(int argc, char **argv)
 {

@@ -19,14 +19,20 @@
 // along with alg,h.  If not, see <http://www.gnu.org/licenses/>.
 // =====================================================================
 
-
-
 // Maschine ZERO DOUBLE
 #define DBL_EPSILON 2.2204460492503131e-16
 
 // Error codes
 #define ERR_TRFM_SIZE_EQUAL 3010;
 #define ERR_TRFM_3_POINTS   3020;
+
+#include <stdio.h>
+#include <stdarg.h>
+#include <stdlib.h>
+#include <stddef.h>
+#include <string.h>
+#include <math.h>
+#include <gsl/gsl_linalg.h>
 
 // ===========================================================================
 /**
@@ -114,9 +120,9 @@ void int_vector_free(int_vector_t *vec);
  * @param x X-coordinate globale data
  * @param y Y-coordinate globale data
  */
-void trfm_pix_geo(double *trfm, double col, double row,
-                  double *x , double *y);
+void trfm_pix_geo(const double *trfm, double col, double row, double *x , double *y);
 
+void sort_int(int * a, int * b);
 
 // -------------------------------------------------------------------
 /**
@@ -128,7 +134,7 @@ void trfm_pix_geo(double *trfm, double col, double row,
  * @param row row in image
  * @return true if OK
  */
-int trfm_geo_pix(double *trfm, double x, double y,
+int trfm_geo_pix(const double *trfm, double x, double y,
                 long *col , long* row);
 
 // ---------------------------------------------------------------
